@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase, isSupabaseConfigured, rowToStock, stockToRow } from "./supabase";
 
+const TWELVE_BASE = "https://api.twelvedata.com";
+const TWELVE_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY;
+
 const INDICES = [
-  { symbol: "^KS11",  label: "코스피" },
-  { symbol: "^KQ11",  label: "코스닥" },
-  { symbol: "^IXIC",  label: "나스닥" },
-  { symbol: "^GSPC",  label: "S&P 500" },
+  { symbol: "KOSPI",  label: "코스피" },
+  { symbol: "KOSDAQ", label: "코스닥" },
+  { symbol: "IXIC",   label: "나스닥" },
+  { symbol: "SPX",    label: "S&P 500" },
 ];
 
 const COLORS = [
@@ -22,9 +25,8 @@ const EMPTY_FORM = {
   currentPrice: "",
 };
 
-function toYahooSymbol(ticker, market) {
-  if (market === "KOSPI") return ticker + ".KS";
-  if (market === "KOSDAQ") return ticker + ".KQ";
+function toTwelveSymbol(ticker, market) {
+  if (market === "KOSPI" || market === "KOSDAQ") return ticker + ":KRX";
   return ticker;
 }
 
@@ -86,28 +88,28 @@ export default function App() {
 
   async function fetchCurrentPrices(targetStocks) {
     if (!targetStocks || targetStocks.length === 0) return;
+    if (!TWELVE_KEY) { setFetchError("VITE_TWELVEDATA_API_KEY 미설정"); return; }
     setIsFetching(true);
     setFetchError(null);
     try {
+      const symbols = targetStocks.map(s => toTwelveSymbol(s.ticker, s.market ?? "KOSPI")).join(",");
+      const res = await fetch(`${TWELVE_BASE}/quote?symbol=${symbols}&apikey=${TWELVE_KEY}`);
+      const data = await res.json();
+      // 단일 종목이면 객체, 복수이면 {symbol: 객체} 형태
+      const quotes = targetStocks.length === 1 ? { [symbols]: data } : data;
       let successCount = 0;
-      const updated = await Promise.all(
-        targetStocks.map(async (s) => {
-          const symbol = toYahooSymbol(s.ticker, s.market ?? "KOSPI");
-          try {
-            const res = await fetch(`/api/yahoo/v8/finance/chart/${symbol}?interval=1d&range=1d`);
-            if (!res.ok) return s;
-            const data = await res.json();
-            const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-            if (price) { successCount++; return { ...s, currentPrice: Math.round(price) }; }
-            return s;
-          } catch {
-            return s;
-          }
-        })
-      );
+      const updated = targetStocks.map(s => {
+        const sym = toTwelveSymbol(s.ticker, s.market ?? "KOSPI");
+        const q = quotes[sym];
+        if (q?.close && !q.code) {
+          successCount++;
+          return { ...s, currentPrice: Math.round(parseFloat(q.close)) };
+        }
+        return s;
+      });
       setStocks(updated);
       setLastUpdated(new Date());
-      if (successCount === 0) setFetchError("시세 조회 실패 — Yahoo Finance 응답 없음");
+      if (successCount === 0) setFetchError("시세 조회 실패 — 티커 또는 API Key 확인 필요");
     } catch {
       setFetchError("시세 조회에 실패했습니다.");
     } finally {
@@ -116,38 +118,43 @@ export default function App() {
   }
 
   async function fetchIndices() {
+    if (!TWELVE_KEY) return;
     try {
+      // 지수 현재가 (배치)
+      const symbols = INDICES.map(i => i.symbol).join(",");
+      const qRes = await fetch(`${TWELVE_BASE}/quote?symbol=${symbols}&apikey=${TWELVE_KEY}`);
+      const qData = await qRes.json();
+      const quotes = INDICES.length === 1 ? { [INDICES[0].symbol]: qData } : qData;
+
       const results = await Promise.all(
         INDICES.map(async (idx) => {
-          try {
-            const url = `/api/yahoo/v8/finance/chart/${encodeURIComponent(idx.symbol)}?interval=1d&range=1mo`;
-            const res = await fetch(url);
-            if (!res.ok) {
-              console.error(`[${idx.label}] HTTP ${res.status}`, url);
-              return { ...idx, price: null, failed: true };
-            }
-            const data = await res.json();
-            const result = data?.chart?.result?.[0];
-            const meta = result?.meta;
-            if (!meta) {
-              console.error(`[${idx.label}] meta 없음`, data);
-              return { ...idx, price: null, failed: true };
-            }
-            const price = meta.regularMarketPrice;
-            const prev = meta.chartPreviousClose;
-            const change = price - prev;
-            const changePct = (change / prev) * 100;
-            const closes = (result?.indicators?.quote?.[0]?.close ?? []).filter(v => v != null);
-            return { ...idx, price, change, changePct, closes };
-          } catch (e) {
-            console.error(`[${idx.label}] fetch 오류`, e);
+          const q = quotes[idx.symbol];
+          if (!q?.close || q.code) {
+            console.error(`[${idx.label}] 지수 조회 실패`, q);
             return { ...idx, price: null, failed: true };
+          }
+          const price = parseFloat(q.close);
+          const change = parseFloat(q.change);
+          const changePct = parseFloat(q.percent_change);
+          // 스파크라인용 시계열
+          try {
+            const tsRes = await fetch(
+              `${TWELVE_BASE}/time_series?symbol=${idx.symbol}&interval=1day&outputsize=22&apikey=${TWELVE_KEY}`
+            );
+            const tsData = await tsRes.json();
+            const closes = (tsData.values ?? [])
+              .map(v => parseFloat(v.close))
+              .filter(v => !isNaN(v))
+              .reverse();
+            return { ...idx, price, change, changePct, closes };
+          } catch {
+            return { ...idx, price, change, changePct, closes: [] };
           }
         })
       );
       setIndices(results);
     } catch (e) {
-      console.error("fetchIndices 전체 오류", e);
+      console.error("fetchIndices 오류", e);
     }
   }
 
@@ -265,18 +272,22 @@ export default function App() {
       clearTimeout(searchTimer.current);
       if (value.length < 1) { setSuggestions([]); return; }
       searchTimer.current = setTimeout(async () => {
+        if (!TWELVE_KEY) { setSuggestions([]); return; }
         try {
           const res = await fetch(
-            `/api/yahoo/v1/finance/search?q=${encodeURIComponent(value)}&lang=ko-KR&region=KR&quotesCount=6&newsCount=0`
+            `${TWELVE_BASE}/symbol_search?symbol=${encodeURIComponent(value)}&apikey=${TWELVE_KEY}`
           );
           const data = await res.json();
-          const quotes = (data?.quotes ?? []).filter((q) => q.quoteType === "EQUITY");
-          setSuggestions(quotes.map((q) => {
-            const sym = q.symbol;
-            let ticker = sym, market = "US";
-            if (sym.endsWith(".KS")) { ticker = sym.replace(".KS", ""); market = "KOSPI"; }
-            else if (sym.endsWith(".KQ")) { ticker = sym.replace(".KQ", ""); market = "KOSDAQ"; }
-            return { symbol: sym, name: q.shortname || q.longname || sym, ticker, market };
+          const items = (data?.data ?? []).filter(q => q.instrument_type === "Common Stock");
+          setSuggestions(items.slice(0, 6).map(q => {
+            const isKRX = q.exchange === "KRX" || q.mic_code === "XKRX";
+            return {
+              symbol: q.symbol,
+              name: q.instrument_name,
+              ticker: q.symbol,
+              market: isKRX ? "KOSPI" : "US",
+              exchange: q.exchange,
+            };
           }));
         } catch { setSuggestions([]); }
       }, 300);
