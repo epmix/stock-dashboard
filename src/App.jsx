@@ -7,8 +7,8 @@ const TWELVE_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY;
 const INDICES = [
   { symbol: "KOSPI",  label: "코스피",  type: "krx" },
   { symbol: "KOSDAQ", label: "코스닥",  type: "krx" },
-  { symbol: "IXIC",   label: "나스닥",  type: "us"  },
-  { symbol: "SPX",    label: "S&P 500", type: "us"  },
+  { symbol: "IXIC",   label: "나스닥",  type: "us",  yahooSymbol: "%5EIXIC" },
+  { symbol: "SPX",    label: "S&P 500", type: "us",  yahooSymbol: "%5EGSPC" },
 ];
 
 const COLORS = [
@@ -135,17 +135,19 @@ export default function App() {
             const up = basic.compareToPreviousPrice?.code === "2";
             return { ...idx, price, change: up ? change : -change, changePct: up ? changePct : -changePct, closes: chart.closes ?? [] };
           } else {
-            // Twelve Data
-            if (!TWELVE_KEY) return { ...idx, price: null, failed: true };
-            const [qRes, tsRes] = await Promise.all([
-              fetch(`${TWELVE_BASE}/quote?symbol=${idx.symbol}&apikey=${TWELVE_KEY}`),
-              fetch(`${TWELVE_BASE}/time_series?symbol=${idx.symbol}&interval=1day&outputsize=22&apikey=${TWELVE_KEY}`),
-            ]);
-            const q = await qRes.json();
-            if (!q.close || q.code) return { ...idx, price: null, failed: true };
-            const tsData = await tsRes.json();
-            const closes = (tsData.values ?? []).map(v => parseFloat(v.close)).filter(v => !isNaN(v)).reverse();
-            return { ...idx, price: parseFloat(q.close), change: parseFloat(q.change), changePct: parseFloat(q.percent_change), closes };
+            // Yahoo Finance proxy: returns price + history in one call
+            const res = await fetch(
+              `/api/yahoo/v8/finance/chart/${idx.yahooSymbol}?interval=1d&range=1mo`
+            );
+            const d = await res.json();
+            const r = d.chart?.result?.[0];
+            if (!r) return { ...idx, price: null, failed: true };
+            const price = r.meta.regularMarketPrice;
+            const prevClose = r.meta.chartPreviousClose;
+            const change = price - prevClose;
+            const changePct = (change / prevClose) * 100;
+            const closes = (r.indicators?.quote?.[0]?.close ?? []).filter((v) => v != null);
+            return { ...idx, price, change, changePct, closes };
           }
         })
       );
