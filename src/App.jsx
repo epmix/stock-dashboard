@@ -5,10 +5,10 @@ const TWELVE_BASE = "https://api.twelvedata.com";
 const TWELVE_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY;
 
 const INDICES = [
-  { symbol: "KOSPI",  label: "코스피" },
-  { symbol: "KOSDAQ", label: "코스닥" },
-  { symbol: "IXIC",   label: "나스닥" },
-  { symbol: "SPX",    label: "S&P 500" },
+  { symbol: "KOSPI",  label: "코스피",  type: "krx" },
+  { symbol: "KOSDAQ", label: "코스닥",  type: "krx" },
+  { symbol: "IXIC",   label: "나스닥",  type: "us"  },
+  { symbol: "SPX",    label: "S&P 500", type: "us"  },
 ];
 
 const COLORS = [
@@ -25,10 +25,6 @@ const EMPTY_FORM = {
   currentPrice: "",
 };
 
-function toTwelveSymbol(ticker, market) {
-  if (market === "KOSPI" || market === "KOSDAQ") return ticker + ":KRX";
-  return ticker;
-}
 
 function formatKRW(value) {
   return value.toLocaleString("ko-KR") + "원";
@@ -88,28 +84,31 @@ export default function App() {
 
   async function fetchCurrentPrices(targetStocks) {
     if (!targetStocks || targetStocks.length === 0) return;
-    if (!TWELVE_KEY) { setFetchError("VITE_TWELVEDATA_API_KEY 미설정"); return; }
     setIsFetching(true);
     setFetchError(null);
     try {
-      const symbols = targetStocks.map(s => toTwelveSymbol(s.ticker, s.market ?? "KOSPI")).join(",");
-      const res = await fetch(`${TWELVE_BASE}/quote?symbol=${symbols}&apikey=${TWELVE_KEY}`);
-      const data = await res.json();
-      // 단일 종목이면 객체, 복수이면 {symbol: 객체} 형태
-      const quotes = targetStocks.length === 1 ? { [symbols]: data } : data;
       let successCount = 0;
-      const updated = targetStocks.map(s => {
-        const sym = toTwelveSymbol(s.ticker, s.market ?? "KOSPI");
-        const q = quotes[sym];
-        if (q?.close && !q.code) {
-          successCount++;
-          return { ...s, currentPrice: Math.round(parseFloat(q.close)) };
-        }
-        return s;
-      });
+      const updated = await Promise.all(
+        targetStocks.map(async (s) => {
+          const isKRX = s.market === "KOSPI" || s.market === "KOSDAQ";
+          if (isKRX) {
+            const res = await fetch(`/api/naver?type=stock&ticker=${encodeURIComponent(s.ticker)}`);
+            const d = await res.json();
+            const price = parseInt((d.closePrice ?? "").replace(/,/g, ""), 10);
+            if (price > 0) { successCount++; return { ...s, currentPrice: price }; }
+            return s;
+          } else {
+            if (!TWELVE_KEY) return s;
+            const res = await fetch(`${TWELVE_BASE}/quote?symbol=${encodeURIComponent(s.ticker)}&apikey=${TWELVE_KEY}`);
+            const d = await res.json();
+            if (d.close && !d.code) { successCount++; return { ...s, currentPrice: Math.round(parseFloat(d.close)) }; }
+            return s;
+          }
+        })
+      );
       setStocks(updated);
       setLastUpdated(new Date());
-      if (successCount === 0) setFetchError("시세 조회 실패 — 티커 또는 API Key 확인 필요");
+      if (successCount === 0) setFetchError("시세 조회 실패 — 티커를 확인하세요");
     } catch {
       setFetchError("시세 조회에 실패했습니다.");
     } finally {
@@ -118,37 +117,35 @@ export default function App() {
   }
 
   async function fetchIndices() {
-    if (!TWELVE_KEY) return;
     try {
-      // 지수 현재가 (배치)
-      const symbols = INDICES.map(i => i.symbol).join(",");
-      const qRes = await fetch(`${TWELVE_BASE}/quote?symbol=${symbols}&apikey=${TWELVE_KEY}`);
-      const qData = await qRes.json();
-      const quotes = INDICES.length === 1 ? { [INDICES[0].symbol]: qData } : qData;
-
       const results = await Promise.all(
         INDICES.map(async (idx) => {
-          const q = quotes[idx.symbol];
-          if (!q?.close || q.code) {
-            console.error(`[${idx.label}] 지수 조회 실패`, q);
-            return { ...idx, price: null, failed: true };
-          }
-          const price = parseFloat(q.close);
-          const change = parseFloat(q.change);
-          const changePct = parseFloat(q.percent_change);
-          // 스파크라인용 시계열
-          try {
-            const tsRes = await fetch(
-              `${TWELVE_BASE}/time_series?symbol=${idx.symbol}&interval=1day&outputsize=22&apikey=${TWELVE_KEY}`
-            );
+          if (idx.type === "krx") {
+            // Naver Finance
+            const [basicRes, chartRes] = await Promise.all([
+              fetch(`/api/naver?type=index&code=${idx.symbol}`),
+              fetch(`/api/naver?type=chart&symbol=${idx.symbol}&count=22`),
+            ]);
+            const basic = await basicRes.json();
+            const chart = await chartRes.json();
+            if (!basic.closePrice) return { ...idx, price: null, failed: true };
+            const price = parseFloat(basic.closePrice.replace(/,/g, ""));
+            const change = parseFloat((basic.compareToPreviousClosePrice ?? "0").replace(/,/g, ""));
+            const changePct = parseFloat(basic.fluctuationsRatio ?? "0");
+            const up = basic.compareToPreviousPrice?.code === "2";
+            return { ...idx, price, change: up ? change : -change, changePct: up ? changePct : -changePct, closes: chart.closes ?? [] };
+          } else {
+            // Twelve Data
+            if (!TWELVE_KEY) return { ...idx, price: null, failed: true };
+            const [qRes, tsRes] = await Promise.all([
+              fetch(`${TWELVE_BASE}/quote?symbol=${idx.symbol}&apikey=${TWELVE_KEY}`),
+              fetch(`${TWELVE_BASE}/time_series?symbol=${idx.symbol}&interval=1day&outputsize=22&apikey=${TWELVE_KEY}`),
+            ]);
+            const q = await qRes.json();
+            if (!q.close || q.code) return { ...idx, price: null, failed: true };
             const tsData = await tsRes.json();
-            const closes = (tsData.values ?? [])
-              .map(v => parseFloat(v.close))
-              .filter(v => !isNaN(v))
-              .reverse();
-            return { ...idx, price, change, changePct, closes };
-          } catch {
-            return { ...idx, price, change, changePct, closes: [] };
+            const closes = (tsData.values ?? []).map(v => parseFloat(v.close)).filter(v => !isNaN(v)).reverse();
+            return { ...idx, price: parseFloat(q.close), change: parseFloat(q.change), changePct: parseFloat(q.percent_change), closes };
           }
         })
       );
@@ -629,7 +626,7 @@ export default function App() {
         </div>
 
         <p className="text-center text-xs text-slate-400 pb-4">
-          * 현재가는 Yahoo finance에서 자동으로 불러온 값을 기준으로 계산됩니다.
+          * 한국 주식은 Naver Finance, 미국 주식은 Twelve Data 기준으로 현재가를 불러옵니다.
         </p>
         </div>
       </div>
