@@ -417,37 +417,6 @@ export default function App() {
           />
         </div>
 
-        {/* 포트폴리오 비중 차트 */}
-        {enriched.length > 0 && (
-          <div className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-base font-semibold text-slate-700 mb-4">포트폴리오 비중</h2>
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="w-44 h-44 shrink-0">
-                <PieChart slices={sortedEnriched} />
-              </div>
-              <div className="flex-1 w-full space-y-2.5">
-                {sortedEnriched.map((s) => (
-                  <div key={s.id} className="flex items-center gap-3">
-                    <span
-                      className="inline-block w-3 h-3 rounded-sm shrink-0"
-                      style={{ backgroundColor: s.color }}
-                    />
-                    <span className="text-sm font-medium text-slate-700 w-20 truncate shrink-0">{s.name}</span>
-                    <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: s.pct + "%", backgroundColor: s.color }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold text-slate-700 w-12 text-right shrink-0">{s.pct.toFixed(1)}%</span>
-                    <span className="text-sm text-slate-500 w-28 text-right shrink-0 hidden sm:block">{formatKRW(s.evalAmount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* 종목 추가/수정 폼 */}
         {showForm && (
           <div className="bg-white rounded-2xl shadow p-5">
@@ -651,6 +620,37 @@ export default function App() {
             </table>
           </div>
         </div>
+
+        {/* 포트폴리오 비중 차트 */}
+        {enriched.length > 0 && (
+          <div className="bg-white rounded-2xl shadow p-5">
+            <h2 className="text-base font-semibold text-slate-700 mb-4">포트폴리오 비중</h2>
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="w-44 h-44 shrink-0">
+                <PieChart slices={sortedEnriched} />
+              </div>
+              <div className="flex-1 w-full space-y-2.5">
+                {sortedEnriched.map((s) => (
+                  <div key={s.id} className="flex items-center gap-3">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm shrink-0"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    <span className="text-sm font-medium text-slate-700 w-20 truncate shrink-0">{s.name}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: s.pct + "%", backgroundColor: s.color }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-700 w-12 text-right shrink-0">{s.pct.toFixed(1)}%</span>
+                    <span className="text-sm text-slate-500 w-28 text-right shrink-0 hidden sm:block">{formatKRW(s.evalAmount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         <p className="text-center text-xs text-slate-400 pb-4">
           * 한국 주식은 Naver Finance, 미국 주식은 Twelve Data 기준으로 현재가를 불러옵니다.
