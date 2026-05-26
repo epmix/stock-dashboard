@@ -296,7 +296,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 md:p-8">
+    <div className="min-h-screen bg-slate-100 p-3 md:p-8">
       <div className="max-w-6xl mx-auto flex gap-6 items-start">
 
         {/* 사이드바: 시장 지수 */}
@@ -331,38 +331,67 @@ export default function App() {
         </div>
 
         {/* 메인 콘텐츠 */}
-        <div className="flex-1 min-w-0 space-y-6">
+        <div className="flex-1 min-w-0 space-y-4 md:space-y-6">
+
+        {/* 모바일 전용: 시장 지수 가로 스크롤 스트립 */}
+        <div className="md:hidden overflow-x-auto -mx-3 px-3">
+          <div className="flex gap-2 pb-1" style={{ minWidth: "max-content" }}>
+            {INDICES.map((idx) => {
+              const d = indices.find((i) => i.symbol === idx.symbol);
+              const up = d?.change >= 0;
+              return (
+                <div key={idx.symbol} className="bg-white rounded-xl shadow px-3 py-2 min-w-[88px]">
+                  <p className="text-xs text-slate-400">{idx.label}</p>
+                  {d?.price != null ? (
+                    <>
+                      <p className="text-sm font-bold text-slate-800 tabular-nums">
+                        {d.price.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}
+                      </p>
+                      <p className={`text-xs font-medium ${up ? "text-red-500" : "text-blue-500"}`}>
+                        {up ? "▲" : "▼"} {d.changePct.toFixed(2)}%
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-400">{d?.failed ? "실패" : "조회중"}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* 헤더 */}
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-800">포트폴리오 대시보드</h1>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl md:text-3xl font-bold text-slate-800">포트폴리오 대시보드</h1>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${isSupabaseConfigured ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                 {isSupabaseConfigured ? "● Supabase 연결됨" : "● 로컬 모드"}
               </span>
             </div>
-            <p className="text-slate-500 text-sm mt-1">
+            <p className="text-slate-500 text-xs md:text-sm mt-1">
               {lastUpdated
                 ? `마지막 업데이트: ${lastUpdated.toLocaleTimeString("ko-KR")}`
                 : isFetching ? "시세 조회 중..." : "내 주식 포트폴리오 현황"}
               {fetchError && <span className="text-red-400 ml-2">{fetchError}</span>}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => { fetchCurrentPrices([...stocks]); fetchIndices(); }}
               disabled={isFetching}
-              className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 font-semibold px-4 py-2 rounded-xl shadow transition"
+              className="flex items-center gap-1 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 font-semibold px-3 py-2 rounded-xl shadow transition"
             >
-              <span className={isFetching ? "animate-spin inline-block" : ""}>↻</span>
-              새로고침
+              <span className={`text-base ${isFetching ? "animate-spin inline-block" : ""}`}>↻</span>
+              <span className="hidden sm:inline text-sm ml-0.5">새로고침</span>
             </button>
             <button
               onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setErrors({}); setSubmitError(null); }}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl shadow transition"
+              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-2 rounded-xl shadow transition"
             >
-              <span className="text-lg leading-none">+</span> 종목 추가
+              <span className="text-base leading-none">+</span>
+              <span className="sm:hidden text-sm ml-0.5">추가</span>
+              <span className="hidden sm:inline text-sm ml-0.5">종목 추가</span>
             </button>
           </div>
         </div>
@@ -370,7 +399,7 @@ export default function App() {
         
 
         {/* 요약 카드 */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
           <SummaryCard label="총 종목 수" value={stocks.length + "개"} color="text-slate-700" />
           <SummaryCard label="총 원금" value={formatKRW(totalCost)} color="text-slate-700" />
           <SummaryCard label="총 평가금액" value={formatKRW(totalEval)} color="text-slate-700" />
@@ -533,14 +562,14 @@ export default function App() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">종목</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">수량</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">평균단가</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">현재가</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">평가금액</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">손익</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-600">수익률</th>
-                  <th className="px-4 py-3"></th>
+                  <th className="text-left px-3 md:px-4 py-3 font-semibold text-slate-600">종목</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">수량</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">평균단가</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">현재가</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">평가금액</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">손익</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">수익률</th>
+                  <th className="px-3 md:px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -562,30 +591,30 @@ export default function App() {
                       key={s.id}
                       className="border-b border-slate-100 hover:bg-slate-50 transition"
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 md:px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span
                             className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: COLORS[i % COLORS.length] }}
                           />
                           <div>
-                            <div className="font-semibold text-slate-800">{s.name}</div>
+                            <div className="font-semibold text-slate-800 whitespace-nowrap">{s.name}</div>
                             <div className="text-xs text-slate-400">{s.ticker}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-700">{s.quantity.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{s.avgPrice.toLocaleString()}원</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{s.currentPrice.toLocaleString()}원</td>
-                      <td className="px-4 py-3 text-right font-medium text-slate-800">{formatKRW(s.evalAmount)}</td>
-                      <td className={`px-4 py-3 text-right font-medium ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                      <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.quantity.toLocaleString()}</td>
+                      <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.avgPrice.toLocaleString()}원</td>
+                      <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.currentPrice.toLocaleString()}원</td>
+                      <td className="px-3 md:px-4 py-3 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">{formatKRW(s.evalAmount)}</td>
+                      <td className={`px-3 md:px-4 py-3 text-right font-medium tabular-nums whitespace-nowrap ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
                         {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
                       </td>
-                      <td className={`px-4 py-3 text-right font-semibold ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                      <td className={`px-3 md:px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
                         {formatPercent(s.returnRate)}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 justify-end">
+                      <td className="px-3 md:px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
                           <button
                             onClick={() => handleEdit(s)}
                             className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition"
@@ -607,12 +636,12 @@ export default function App() {
               {enriched.length > 0 && (
                 <tfoot>
                   <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
-                    <td className="px-4 py-3 text-slate-700" colSpan={4}>합계</td>
-                    <td className="px-4 py-3 text-right text-slate-800">{formatKRW(totalEval)}</td>
-                    <td className={`px-4 py-3 text-right ${totalPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                    <td className="px-3 md:px-4 py-3 text-slate-700" colSpan={4}>합계</td>
+                    <td className="px-3 md:px-4 py-3 text-right text-slate-800 tabular-nums whitespace-nowrap">{formatKRW(totalEval)}</td>
+                    <td className={`px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap ${totalPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
                       {totalPL >= 0 ? "+" : ""}{totalPL.toLocaleString()}원
                     </td>
-                    <td className={`px-4 py-3 text-right ${totalReturn >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                    <td className={`px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap ${totalReturn >= 0 ? "text-red-500" : "text-blue-500"}`}>
                       {formatPercent(totalReturn)}
                     </td>
                     <td />
@@ -634,9 +663,9 @@ export default function App() {
 
 function SummaryCard({ label, value, color, sub, subColor }) {
   return (
-    <div className="bg-white rounded-2xl shadow p-4">
+    <div className="bg-white rounded-2xl shadow p-3 md:p-4">
       <p className="text-xs text-slate-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold ${color}`}>{value}</p>
+      <p className={`text-sm md:text-lg font-bold ${color} tabular-nums`}>{value}</p>
       {sub && <p className={`text-xs font-medium mt-0.5 ${subColor}`}>{sub}</p>}
     </div>
   );
