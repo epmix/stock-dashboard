@@ -22,6 +22,7 @@ export function rowToStock(row) {
     quantity: row.quantity,
     avgPrice: row.avg_price,
     currentPrice: row.current_price,
+    groupName: row.group_name ?? "기타",
   };
 }
 
@@ -34,5 +35,6 @@ export function stockToRow(s) {
     quantity: s.quantity,
     avg_price: s.avgPrice,
     current_price: s.currentPrice,
+    group_name: s.groupName || "기타",
   };
 }

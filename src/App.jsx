@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase, isSupabaseConfigured, rowToStock, stockToRow } from "./supabase";
 
 const TWELVE_BASE = "https://api.twelvedata.com";
@@ -23,6 +23,7 @@ const EMPTY_FORM = {
   quantity: "",
   avgPrice: "",
   currentPrice: "",
+  groupName: "",
 };
 
 
@@ -158,14 +159,24 @@ export default function App() {
     fetchIndices();
   }, []);
 
-  const sortedEnriched = enriched
+  const coloredEnriched = enriched.map((s, i) => ({
+    ...s,
+    pct: totalEval > 0 ? (s.evalAmount / totalEval) * 100 : 0,
+    color: COLORS[i % COLORS.length],
+  }));
+
+  const sortedEnriched = coloredEnriched
     .slice()
-    .sort((a, b) => b.evalAmount - a.evalAmount)
-    .map((s) => ({
-      ...s,
-      pct: totalEval > 0 ? (s.evalAmount / totalEval) * 100 : 0,
-      color: COLORS[enriched.findIndex((x) => x.id === s.id) % COLORS.length],
-    }));
+    .sort((a, b) => b.evalAmount - a.evalAmount);
+
+  // 그룹별 묶기: 등장 순서 유지
+  const groupOrder = [];
+  const groupMap = {};
+  for (const s of coloredEnriched) {
+    const g = s.groupName || "기타";
+    if (!groupMap[g]) { groupMap[g] = []; groupOrder.push(g); }
+    groupMap[g].push(s);
+  }
 
   function validate(f) {
     const e = {};
@@ -189,6 +200,7 @@ export default function App() {
       quantity: Number(form.quantity),
       avgPrice: Number(form.avgPrice),
       currentPrice: Number(form.currentPrice) || 0,
+      groupName: form.groupName.trim() || "기타",
     };
     let nextStocks;
     if (editingId !== null) {
@@ -237,6 +249,7 @@ export default function App() {
       quantity: String(stock.quantity),
       avgPrice: String(stock.avgPrice),
       currentPrice: String(stock.currentPrice),
+      groupName: stock.groupName ?? "",
     });
     setEditingId(stock.id);
     setErrors({});
@@ -502,6 +515,21 @@ export default function App() {
                     className={inputClass(errors.currentPrice)}
                   />
                 </FormField>
+                <FormField label="그룹">
+                  <input
+                    type="text"
+                    list="group-list"
+                    value={form.groupName}
+                    onChange={(e) => handleChange("groupName", e.target.value)}
+                    placeholder="예: 성장주, 배당주, ETF"
+                    className={inputClass(false)}
+                  />
+                  <datalist id="group-list">
+                    {[...new Set(stocks.map((s) => s.groupName).filter(Boolean))].map((g) => (
+                      <option key={g} value={g} />
+                    ))}
+                  </datalist>
+                </FormField>
               </div>
               {submitError && (
                 <p className="mt-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{submitError}</p>
@@ -555,51 +583,62 @@ export default function App() {
                     </td>
                   </tr>
                 ) : (
-                  enriched.map((s, i) => (
-                    <tr
-                      key={s.id}
-                      className="border-b border-slate-100 hover:bg-slate-50 transition"
-                    >
-                      <td className="px-3 md:px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                          />
-                          <div>
-                            <div className="font-semibold text-slate-800 whitespace-nowrap">{s.name}</div>
-                            <div className="text-xs text-slate-400">{s.ticker}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.quantity.toLocaleString()}</td>
-                      <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.avgPrice.toLocaleString()}원</td>
-                      <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.currentPrice.toLocaleString()}원</td>
-                      <td className="px-3 md:px-4 py-3 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">{formatKRW(s.evalAmount)}</td>
-                      <td className={`px-3 md:px-4 py-3 text-right font-medium tabular-nums whitespace-nowrap ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                        {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
-                      </td>
-                      <td className={`px-3 md:px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                        {formatPercent(s.returnRate)}
-                      </td>
-                      <td className="px-3 md:px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
-                          <button
-                            onClick={() => handleEdit(s)}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition"
-                          >
-                            수정
-                          </button>
-                          <button
-                            onClick={() => handleDelete(s.id)}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  groupOrder.map((group) => {
+                    const rows = groupMap[group];
+                    const gEval = rows.reduce((s, r) => s + r.evalAmount, 0);
+                    const gCost = rows.reduce((s, r) => s + r.costAmount, 0);
+                    const gPL   = gEval - gCost;
+                    const gRet  = gCost > 0 ? (gPL / gCost) * 100 : 0;
+                    return (
+                      <React.Fragment key={group}>
+                        {/* 그룹 헤더 */}
+                        <tr className="bg-indigo-50 border-t border-indigo-100">
+                          <td colSpan={4} className="px-3 md:px-4 py-2">
+                            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{group}</span>
+                            <span className="ml-2 text-xs text-slate-500">{rows.length}종목</span>
+                          </td>
+                          <td className="px-3 md:px-4 py-2 text-right text-xs font-semibold text-slate-700 tabular-nums whitespace-nowrap">{formatKRW(gEval)}</td>
+                          <td className={`px-3 md:px-4 py-2 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                            {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원
+                          </td>
+                          <td className={`px-3 md:px-4 py-2 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${gRet >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                            {formatPercent(gRet)}
+                          </td>
+                          <td />
+                        </tr>
+                        {/* 종목 행 */}
+                        {rows.map((s) => (
+                          <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                            <td className="px-3 md:px-4 py-3 pl-6 md:pl-8">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                                <div>
+                                  <div className="font-semibold text-slate-800 whitespace-nowrap">{s.name}</div>
+                                  <div className="text-xs text-slate-400">{s.ticker}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.quantity.toLocaleString()}</td>
+                            <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.avgPrice.toLocaleString()}원</td>
+                            <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.currentPrice.toLocaleString()}원</td>
+                            <td className="px-3 md:px-4 py-3 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">{formatKRW(s.evalAmount)}</td>
+                            <td className={`px-3 md:px-4 py-3 text-right font-medium tabular-nums whitespace-nowrap ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                              {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
+                            </td>
+                            <td className={`px-3 md:px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                              {formatPercent(s.returnRate)}
+                            </td>
+                            <td className="px-3 md:px-4 py-3">
+                              <div className="flex items-center gap-1 justify-end">
+                                <button onClick={() => handleEdit(s)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition">수정</button>
+                                <button onClick={() => handleDelete(s.id)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition">삭제</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
               {enriched.length > 0 && (
