@@ -94,24 +94,35 @@ export default function App() {
       const results = await Promise.all(
         INDICES.map(async (idx) => {
           try {
-            const res = await fetch(`/api/yahoo/v8/finance/chart/${encodeURIComponent(idx.symbol)}?interval=1d&range=1mo`);
+            const url = `/api/yahoo/v8/finance/chart/${encodeURIComponent(idx.symbol)}?interval=1d&range=1mo`;
+            const res = await fetch(url);
+            if (!res.ok) {
+              console.error(`[${idx.label}] HTTP ${res.status}`, url);
+              return { ...idx, price: null, failed: true };
+            }
             const data = await res.json();
             const result = data?.chart?.result?.[0];
             const meta = result?.meta;
-            if (!meta) return { ...idx, price: null };
+            if (!meta) {
+              console.error(`[${idx.label}] meta 없음`, data);
+              return { ...idx, price: null, failed: true };
+            }
             const price = meta.regularMarketPrice;
             const prev = meta.chartPreviousClose;
             const change = price - prev;
             const changePct = (change / prev) * 100;
             const closes = (result?.indicators?.quote?.[0]?.close ?? []).filter(v => v != null);
             return { ...idx, price, change, changePct, closes };
-          } catch {
-            return { ...idx, price: null };
+          } catch (e) {
+            console.error(`[${idx.label}] fetch 오류`, e);
+            return { ...idx, price: null, failed: true };
           }
         })
       );
       setIndices(results);
-    } catch { /* silent */ }
+    } catch (e) {
+      console.error("fetchIndices 전체 오류", e);
+    }
   }
 
   useEffect(() => {
@@ -219,8 +230,10 @@ export default function App() {
                       </p>
                       {d.closes?.length > 1 && <Sparkline data={d.closes} up={up} />}
                     </>
+                  ) : d?.failed ? (
+                    <p className="text-xs text-red-400">조회 실패 — 콘솔 확인</p>
                   ) : (
-                    <p className="text-sm text-slate-400">조회 중...</p>
+                    <p className="text-xs text-slate-400">조회 중...</p>
                   )}
                 </div>
               );
