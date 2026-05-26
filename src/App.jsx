@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { supabase, isSupabaseConfigured, rowToStock, stockToRow } from "./supabase";
 
 const INDICES = [
   { symbol: "^KS11",  label: "코스피" },
@@ -36,11 +37,8 @@ function formatPercent(value) {
 }
 
 export default function App() {
-  const [stocks, setStocks] = useState([
-    { id: 1, name: "삼성전자", ticker: "005930", market: "KOSPI", quantity: 100, avgPrice: 65000, currentPrice: 72000 },
-    { id: 2, name: "카카오", ticker: "035720", market: "KOSDAQ", quantity: 50, avgPrice: 55000, currentPrice: 48000 },
-    { id: 3, name: "NAVER", ticker: "035420", market: "KOSPI", quantity: 30, avgPrice: 180000, currentPrice: 195000 },
-  ]);
+  const [stocks, setStocks] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -49,6 +47,10 @@ export default function App() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [fetchError, setFetchError] = useState(null);
   const [indices, setIndices] = useState([]);
+  const [submitError, setSubmitError] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimer = useRef(null);
 
   const enriched = stocks.map((s) => {
     const evalAmount = s.quantity * s.currentPrice;
@@ -63,18 +65,41 @@ export default function App() {
   const totalPL = totalEval - totalCost;
   const totalReturn = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
 
+  async function loadStocks() {
+    if (!isSupabaseConfigured) { setIsLoading(false); return; }
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from("stocks")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) {
+      console.error("Supabase 불러오기 실패", error);
+      setSubmitError(`DB 연결 실패: ${error.message}`);
+      setIsLoading(false);
+      return;
+    }
+    const mapped = data.map(rowToStock);
+    setStocks(mapped);
+    setIsLoading(false);
+    if (mapped.length > 0) fetchCurrentPrices(mapped);
+  }
+
   async function fetchCurrentPrices(targetStocks) {
+    if (!targetStocks || targetStocks.length === 0) return;
     setIsFetching(true);
     setFetchError(null);
     try {
+      let successCount = 0;
       const updated = await Promise.all(
         targetStocks.map(async (s) => {
           const symbol = toYahooSymbol(s.ticker, s.market ?? "KOSPI");
           try {
             const res = await fetch(`/api/yahoo/v8/finance/chart/${symbol}?interval=1d&range=1d`);
+            if (!res.ok) return s;
             const data = await res.json();
             const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-            return price ? { ...s, currentPrice: Math.round(price) } : s;
+            if (price) { successCount++; return { ...s, currentPrice: Math.round(price) }; }
+            return s;
           } catch {
             return s;
           }
@@ -82,6 +107,7 @@ export default function App() {
       );
       setStocks(updated);
       setLastUpdated(new Date());
+      if (successCount === 0) setFetchError("시세 조회 실패 — Yahoo Finance 응답 없음");
     } catch {
       setFetchError("시세 조회에 실패했습니다.");
     } finally {
@@ -126,7 +152,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    fetchCurrentPrices(stocks);
+    loadStocks();
     fetchIndices();
   }, []);
 
@@ -145,28 +171,54 @@ export default function App() {
     if (!f.ticker.trim()) e.ticker = "티커를 입력하세요";
     if (!f.quantity || isNaN(f.quantity) || Number(f.quantity) <= 0) e.quantity = "유효한 수량을 입력하세요";
     if (!f.avgPrice || isNaN(f.avgPrice) || Number(f.avgPrice) <= 0) e.avgPrice = "유효한 평균단가를 입력하세요";
-    if (!f.currentPrice || isNaN(f.currentPrice) || Number(f.currentPrice) <= 0) e.currentPrice = "유효한 현재가를 입력하세요";
+    // 현재가는 선택 — 미입력 시 Yahoo Finance에서 자동 조회
     return e;
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     const errs = validate(form);
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setSubmitError(null);
     const parsed = {
       name: form.name.trim(),
       ticker: form.ticker.trim().toUpperCase(),
       market: form.market,
       quantity: Number(form.quantity),
       avgPrice: Number(form.avgPrice),
-      currentPrice: Number(form.currentPrice),
+      currentPrice: Number(form.currentPrice) || 0,
     };
     let nextStocks;
     if (editingId !== null) {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from("stocks")
+          .update(stockToRow(parsed))
+          .eq("id", editingId);
+        if (error) {
+          console.error("수정 실패", error);
+          setSubmitError(`저장 실패: ${error.message}`);
+          return;
+        }
+      }
       nextStocks = stocks.map((s) => s.id === editingId ? { ...s, ...parsed } : s);
       setEditingId(null);
     } else {
-      nextStocks = [...stocks, { id: Date.now(), ...parsed }];
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase
+          .from("stocks")
+          .insert(stockToRow(parsed))
+          .select()
+          .single();
+        if (error) {
+          console.error("추가 실패", error);
+          setSubmitError(`저장 실패: ${error.message}`);
+          return;
+        }
+        nextStocks = [...stocks, { id: data.id, ...parsed }];
+      } else {
+        nextStocks = [...stocks, { id: Date.now(), ...parsed }];
+      }
     }
     setStocks(nextStocks);
     setForm(EMPTY_FORM);
@@ -189,7 +241,11 @@ export default function App() {
     setShowForm(true);
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from("stocks").delete().eq("id", id);
+      if (error) { console.error("삭제 실패", error); return; }
+    }
     setStocks(stocks.filter((s) => s.id !== id));
     if (editingId === id) { setEditingId(null); setForm(EMPTY_FORM); setShowForm(false); }
   }
@@ -204,6 +260,33 @@ export default function App() {
   function handleChange(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => { const e = { ...prev }; delete e[field]; return e; });
+    if (field === "name") {
+      setShowSuggestions(true);
+      clearTimeout(searchTimer.current);
+      if (value.length < 1) { setSuggestions([]); return; }
+      searchTimer.current = setTimeout(async () => {
+        try {
+          const res = await fetch(
+            `/api/yahoo/v1/finance/search?q=${encodeURIComponent(value)}&lang=ko-KR&region=KR&quotesCount=6&newsCount=0`
+          );
+          const data = await res.json();
+          const quotes = (data?.quotes ?? []).filter((q) => q.quoteType === "EQUITY");
+          setSuggestions(quotes.map((q) => {
+            const sym = q.symbol;
+            let ticker = sym, market = "US";
+            if (sym.endsWith(".KS")) { ticker = sym.replace(".KS", ""); market = "KOSPI"; }
+            else if (sym.endsWith(".KQ")) { ticker = sym.replace(".KQ", ""); market = "KOSDAQ"; }
+            return { symbol: sym, name: q.shortname || q.longname || sym, ticker, market };
+          }));
+        } catch { setSuggestions([]); }
+      }, 300);
+    }
+  }
+
+  function handleSelectSuggestion(s) {
+    setForm((prev) => ({ ...prev, name: s.name, ticker: s.ticker, market: s.market }));
+    setSuggestions([]);
+    setShowSuggestions(false);
   }
 
   return (
@@ -247,7 +330,12 @@ export default function App() {
         {/* 헤더 */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-800">포트폴리오 대시보드</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-800">포트폴리오 대시보드</h1>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${isSupabaseConfigured ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                {isSupabaseConfigured ? "● Supabase 연결됨" : "● 로컬 모드"}
+              </span>
+            </div>
             <p className="text-slate-500 text-sm mt-1">
               {lastUpdated
                 ? `마지막 업데이트: ${lastUpdated.toLocaleTimeString("ko-KR")}`
@@ -257,7 +345,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { fetchCurrentPrices(stocks); fetchIndices(); }}
+              onClick={() => { fetchCurrentPrices([...stocks]); fetchIndices(); }}
               disabled={isFetching}
               className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 font-semibold px-4 py-2 rounded-xl shadow transition"
             >
@@ -265,7 +353,7 @@ export default function App() {
               새로고침
             </button>
             <button
-              onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setErrors({}); }}
+              onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setErrors({}); setSubmitError(null); }}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl shadow transition"
             >
               <span className="text-lg leading-none">+</span> 종목 추가
@@ -334,13 +422,31 @@ export default function App() {
             <form onSubmit={handleSubmit} noValidate>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <FormField label="종목명" error={errors.name}>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => handleChange("name", e.target.value)}
-                    placeholder="삼성전자"
-                    className={inputClass(errors.name)}
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => handleChange("name", e.target.value)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                      placeholder="삼성전자"
+                      className={inputClass(errors.name)}
+                      autoComplete="off"
+                    />
+                    {showSuggestions && suggestions.length > 0 && (
+                      <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                        {suggestions.map((s) => (
+                          <li
+                            key={s.symbol}
+                            onMouseDown={() => handleSelectSuggestion(s)}
+                            className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-indigo-50 text-sm"
+                          >
+                            <span className="font-medium text-slate-800 truncate">{s.name}</span>
+                            <span className="ml-2 text-xs text-slate-400 shrink-0">{s.ticker} · {s.market}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </FormField>
                 <FormField label="티커" error={errors.ticker}>
                   <input
@@ -393,7 +499,10 @@ export default function App() {
                   />
                 </FormField>
               </div>
-              <div className="flex gap-3 mt-5">
+              {submitError && (
+                <p className="mt-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{submitError}</p>
+              )}
+              <div className="flex gap-3 mt-4">
                 <button
                   type="submit"
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-xl transition"
@@ -429,7 +538,13 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {enriched.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-12 text-slate-400">
+                      데이터 불러오는 중...
+                    </td>
+                  </tr>
+                ) : enriched.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center py-12 text-slate-400">
                       종목을 추가해보세요
@@ -503,7 +618,7 @@ export default function App() {
         </div>
 
         <p className="text-center text-xs text-slate-400 pb-4">
-          * 현재가는 직접 입력한 값을 기준으로 계산됩니다.
+          * 현재가는 Yahoo finance에서 자동으로 불러온 값을 기준으로 계산됩니다.
         </p>
         </div>
       </div>
