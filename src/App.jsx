@@ -7,8 +7,8 @@ const TWELVE_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY;
 const INDICES = [
   { symbol: "KOSPI",  label: "코스피",  type: "krx" },
   { symbol: "KOSDAQ", label: "코스닥",  type: "krx" },
-  { symbol: "IXIC",   label: "나스닥",  type: "us",  yahooSymbol: "%5EIXIC" },
-  { symbol: "SPX",    label: "S&P 500", type: "us",  yahooSymbol: "%5EGSPC" },
+  { symbol: "IXIC",   label: "나스닥",  type: "us"  },
+  { symbol: "SPX",    label: "S&P 500", type: "us"  },
 ];
 
 const COLORS = [
@@ -118,10 +118,12 @@ export default function App() {
 
   async function fetchIndices() {
     try {
-      const results = await Promise.all(
-        INDICES.map(async (idx) => {
-          if (idx.type === "krx") {
-            // Naver Finance
+      const krxIndices = INDICES.filter((i) => i.type === "krx");
+      const usIndices  = INDICES.filter((i) => i.type === "us");
+
+      const [krxResults, usData] = await Promise.all([
+        Promise.all(
+          krxIndices.map(async (idx) => {
             const [basicRes, chartRes] = await Promise.all([
               fetch(`/api/naver?type=index&code=${idx.symbol}`),
               fetch(`/api/naver?type=chart&symbol=${idx.symbol}&count=22`),
@@ -134,24 +136,18 @@ export default function App() {
             const changePct = parseFloat(basic.fluctuationsRatio ?? "0");
             const up = basic.compareToPreviousPrice?.code === "2";
             return { ...idx, price, change: up ? change : -change, changePct: up ? changePct : -changePct, closes: chart.closes ?? [] };
-          } else {
-            // Yahoo Finance proxy: returns price + history in one call
-            const res = await fetch(
-              `/api/yahoo/v8/finance/chart/${idx.yahooSymbol}?interval=1d&range=1mo`
-            );
-            const d = await res.json();
-            const r = d.chart?.result?.[0];
-            if (!r) return { ...idx, price: null, failed: true };
-            const price = r.meta.regularMarketPrice;
-            const prevClose = r.meta.chartPreviousClose;
-            const change = price - prevClose;
-            const changePct = (change / prevClose) * 100;
-            const closes = (r.indicators?.quote?.[0]?.close ?? []).filter((v) => v != null);
-            return { ...idx, price, change, changePct, closes };
-          }
-        })
-      );
-      setIndices(results);
+          })
+        ),
+        fetch("/api/us-indices").then((r) => r.json()).catch(() => ({})),
+      ]);
+
+      const usResults = usIndices.map((idx) => {
+        const d = usData[idx.symbol];
+        if (!d) return { ...idx, price: null, failed: true };
+        return { ...idx, ...d };
+      });
+
+      setIndices([...krxResults, ...usResults]);
     } catch (e) {
       console.error("fetchIndices 오류", e);
     }
