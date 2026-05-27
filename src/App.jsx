@@ -28,7 +28,7 @@ const EMPTY_FORM = {
 
 
 function formatKRW(value) {
-  return value.toLocaleString("ko-KR") + "원";
+  return Math.round(value).toLocaleString("ko-KR") + "원";
 }
 
 function formatPercent(value) {
@@ -53,6 +53,8 @@ export default function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [usdToKrw, setUsdToKrw] = useState(1400);
+  const [forexRates, setForexRates] = useState({ usd: null, eur: null, jpy: null });
+  const [goldPrice, setGoldPrice] = useState(null);
   const searchTimer = useRef(null);
 
   const enriched = stocks.map((s) => {
@@ -92,8 +94,12 @@ export default function App() {
       const res = await fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json");
       const d = await res.json();
       if (d?.usd?.krw) {
-        setUsdToKrw(d.usd.krw);
-        return d.usd.krw;
+        const usd = d.usd.krw;
+        const eur = d.usd.eur ? Math.round(usd / d.usd.eur) : null;
+        const jpy = d.usd.jpy ? Math.round(usd / d.usd.jpy * 100) : null;
+        setUsdToKrw(usd);
+        setForexRates({ usd: Math.round(usd), eur, jpy });
+        return usd;
       }
     } catch {}
     return null;
@@ -125,15 +131,26 @@ export default function App() {
               }
               if (price > 0) { successCount++; return { ...s, currentPrice: price }; }
             } else {
-              if (TWELVE_KEY) {
-                const res = await fetch(`${TWELVE_BASE}/quote?symbol=${encodeURIComponent(s.ticker)}&apikey=${TWELVE_KEY}`);
-                const d = await res.json();
-                if (d.close && !d.code) {
-                  const usd = parseFloat(d.close);
-                  const krw = Math.round(usd * (rate ?? usdToKrw));
-                  successCount++;
-                  return { ...s, currentPrice: krw };
-                }
+              const fx = rate ?? usdToKrw;
+              let usdPrice = 0;
+              // Yahoo Finance (무료, 우선)
+              try {
+                const yRes = await fetch(`/api/yahoo/v7/finance/quote?symbols=${encodeURIComponent(s.ticker)}`);
+                const yD = await yRes.json();
+                const p = yD?.quoteResponse?.result?.[0]?.regularMarketPrice;
+                if (p > 0) usdPrice = p;
+              } catch {}
+              // Twelve Data (폴백)
+              if (!usdPrice && TWELVE_KEY) {
+                try {
+                  const tRes = await fetch(`${TWELVE_BASE}/quote?symbol=${encodeURIComponent(s.ticker)}&apikey=${TWELVE_KEY}`);
+                  const tD = await tRes.json();
+                  if (tD.close && !tD.code) usdPrice = parseFloat(tD.close);
+                } catch {}
+              }
+              if (usdPrice > 0) {
+                successCount++;
+                return { ...s, currentPrice: Math.round(usdPrice * fx), currentPriceUsd: usdPrice };
               }
             }
           } catch {
@@ -199,9 +216,19 @@ export default function App() {
     }
   }
 
+  async function fetchGoldPrice() {
+    try {
+      const res = await fetch("/api/yahoo/v7/finance/quote?symbols=GC%3DF");
+      const d = await res.json();
+      const usdPerOz = d?.quoteResponse?.result?.[0]?.regularMarketPrice;
+      if (usdPerOz > 0) setGoldPrice(usdPerOz);
+    } catch {}
+  }
+
   useEffect(() => {
     fetchUsdToKrw().then((rate) => loadStocks(rate));
     fetchIndices();
+    fetchGoldPrice();
   }, []);
 
   const coloredEnriched = enriched.map((s, i) => ({
@@ -283,7 +310,7 @@ export default function App() {
     setForm(EMPTY_FORM);
     setErrors({});
     setShowForm(false);
-    fetchCurrentPrices(nextStocks);
+    fetchCurrentPrices(nextStocks, usdToKrw);
   }
 
   function handleEdit(stock) {
@@ -377,6 +404,42 @@ export default function App() {
                 </div>
               );
             })}
+            {/* 환율 */}
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1 pt-1">환율</p>
+            {[
+              { label: "달러 (USD)", value: forexRates.usd, unit: "1달러" },
+              { label: "유로 (EUR)", value: forexRates.eur, unit: "1유로" },
+              { label: "엔 (JPY)", value: forexRates.jpy, unit: "100엔" },
+            ].map(({ label, value, unit }) => (
+              <div key={label} className="bg-white rounded-2xl shadow px-4 py-3">
+                <p className="text-xs text-slate-400 mb-1">{label}</p>
+                {value ? (
+                  <>
+                    <p className="text-base font-bold text-slate-800 tabular-nums">
+                      {value.toLocaleString("ko-KR")}원
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">{unit}</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">조회 중...</p>
+                )}
+              </div>
+            ))}
+            {/* 금 시세 */}
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1 pt-1">금 시세</p>
+            <div className="bg-white rounded-2xl shadow px-4 py-3">
+              <p className="text-xs text-slate-400 mb-1">금 (Gold)</p>
+              {goldPrice ? (
+                <>
+                  <p className="text-base font-bold text-slate-800 tabular-nums">
+                    {Math.round(goldPrice * usdToKrw / 31.1035).toLocaleString("ko-KR")}원
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">${goldPrice.toLocaleString("en-US", { maximumFractionDigits: 0 })} · 1g</p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-400">조회 중...</p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -407,6 +470,32 @@ export default function App() {
                 </div>
               );
             })}
+            {[
+              { label: "달러", value: forexRates.usd },
+              { label: "유로", value: forexRates.eur },
+              { label: "100엔", value: forexRates.jpy },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-white rounded-xl shadow px-3 py-2 min-w-[80px]">
+                <p className="text-xs text-slate-400">{label}</p>
+                {value ? (
+                  <p className="text-sm font-bold text-slate-800 tabular-nums">
+                    {value.toLocaleString("ko-KR")}원
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-400">조회중</p>
+                )}
+              </div>
+            ))}
+            <div className="bg-white rounded-xl shadow px-3 py-2 min-w-[80px]">
+              <p className="text-xs text-slate-400">금 1g</p>
+              {goldPrice ? (
+                <p className="text-sm font-bold text-slate-800 tabular-nums">
+                  {Math.round(goldPrice * usdToKrw / 31.1035).toLocaleString("ko-KR")}원
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">조회중</p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -661,7 +750,7 @@ export default function App() {
                               <div className="text-right tabular-nums whitespace-nowrap">
                                 <div className="text-xs font-semibold text-slate-700">{formatKRW(gEval)}</div>
                                 <div className={`text-[11px] font-semibold ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                                  {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원 ({formatPercent(gRet)})
+                                  {gPL >= 0 ? "+" : ""}{Math.round(gPL).toLocaleString()}원 ({formatPercent(gRet)})
                                 </div>
                               </div>
                             </div>
@@ -691,13 +780,16 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="hidden md:table-cell px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">
-                                  {s.currentPrice.toLocaleString()}원
+                                  <div>{Math.round(s.currentPrice).toLocaleString()}원</div>
+                                  {s.currentPriceUsd && (
+                                    <div className="text-xs text-slate-400">${s.currentPriceUsd.toFixed(2)}</div>
+                                  )}
                                 </td>
                                 <td className="px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap">
                                   <div className="font-medium text-slate-800">{formatKRW(s.evalAmount)}</div>
                                   <div className="flex items-center gap-1 justify-end">
                                     <div className={`text-[11px] font-medium ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                                      {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
+                                      {s.profitLoss >= 0 ? "+" : ""}{Math.round(s.profitLoss).toLocaleString()}원
                                     </div>
                                     <div className={`text-[11px] font-semibold ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
                                       ({formatPercent(s.returnRate)})
@@ -711,8 +803,11 @@ export default function App() {
                                   <td colSpan={3} className="px-6 md:px-8 py-2.5">
                                     <div className="flex items-center gap-4 text-xs text-slate-600">
                                       <span><span className="text-slate-400">티커</span> {s.ticker}</span>
-                                      <span className="md:hidden"><span className="text-slate-400">현재가</span> {s.currentPrice.toLocaleString()}원</span>
-                                      <span><span className="text-slate-400">평균단가</span> {s.avgPrice.toLocaleString()}원</span>
+                                      <span className="md:hidden">
+                                        <span className="text-slate-400">현재가</span> {Math.round(s.currentPrice).toLocaleString()}원
+                                        {s.currentPriceUsd && <span className="text-slate-400 ml-1">(${s.currentPriceUsd.toFixed(2)})</span>}
+                                      </span>
+                                      <span><span className="text-slate-400">평균단가</span> {Math.round(s.avgPrice).toLocaleString()}원</span>
                                       <div className="ml-auto flex gap-1">
                                         <button
                                           onClick={(e) => { e.stopPropagation(); handleEdit(s); }}
@@ -743,7 +838,7 @@ export default function App() {
                       <div className="text-slate-800">{formatKRW(totalEval)}</div>
                       <div className="flex items-center gap-1 justify-end">
                         <div className={`text-[11px] font-medium ${totalPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                          {totalPL >= 0 ? "+" : ""}{totalPL.toLocaleString()}원
+                          {totalPL >= 0 ? "+" : ""}{Math.round(totalPL).toLocaleString()}원
                         </div>
                         <div className={`text-[11px] font-semibold ${totalReturn >= 0 ? "text-red-500" : "text-blue-500"}`}>
                           {formatPercent(totalReturn)}
