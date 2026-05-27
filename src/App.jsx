@@ -93,19 +93,23 @@ export default function App() {
         targetStocks.map(async (s) => {
           // 6자리 숫자 티커는 시장 설정 무관하게 Naver로 조회
           const isKRX = s.market === "KOSPI" || s.market === "KOSDAQ" || /^\d{6}$/.test(s.ticker);
-          if (isKRX) {
-            const res = await fetch(`/api/naver?type=stock&ticker=${encodeURIComponent(s.ticker)}`);
-            const d = await res.json();
-            const price = parseInt((d.closePrice ?? "").replace(/,/g, ""), 10);
-            if (price > 0) { successCount++; return { ...s, currentPrice: price }; }
-            return s;
-          } else {
-            if (!TWELVE_KEY) return s;
-            const res = await fetch(`${TWELVE_BASE}/quote?symbol=${encodeURIComponent(s.ticker)}&apikey=${TWELVE_KEY}`);
-            const d = await res.json();
-            if (d.close && !d.code) { successCount++; return { ...s, currentPrice: Math.round(parseFloat(d.close)) }; }
-            return s;
+          try {
+            if (isKRX) {
+              const res = await fetch(`/api/naver?type=stock&ticker=${encodeURIComponent(s.ticker)}`);
+              const d = await res.json();
+              const price = parseInt((d.closePrice ?? "").replace(/,/g, ""), 10);
+              if (price > 0) { successCount++; return { ...s, currentPrice: price }; }
+            } else {
+              if (TWELVE_KEY) {
+                const res = await fetch(`${TWELVE_BASE}/quote?symbol=${encodeURIComponent(s.ticker)}&apikey=${TWELVE_KEY}`);
+                const d = await res.json();
+                if (d.close && !d.code) { successCount++; return { ...s, currentPrice: Math.round(parseFloat(d.close)) }; }
+              }
+            }
+          } catch {
+            // 개별 실패 무시, 다음 종목 계속
           }
+          return s;
         })
       );
       setStocks(updated);
