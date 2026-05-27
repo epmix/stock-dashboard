@@ -41,6 +41,7 @@ export default function App() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // { id, name }
   const [showForm, setShowForm] = useState(false);
   const [errors, setErrors] = useState({});
   const [isFetching, setIsFetching] = useState(false);
@@ -50,6 +51,7 @@ export default function App() {
   const [submitError, setSubmitError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const searchTimer = useRef(null);
 
   const enriched = stocks.map((s) => {
@@ -417,7 +419,7 @@ export default function App() {
             </button>
             <button
               onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setErrors({}); setSubmitError(null); }}
-              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-2 rounded-xl shadow transition"
+              className="flex items-center gap-1 bg-slate-900 hover:bg-slate-700 text-white font-semibold px-3 py-2 rounded-xl shadow transition"
             >
               <span className="text-base leading-none">+</span>
               <span className="sm:hidden text-sm ml-0.5">추가</span>
@@ -429,22 +431,21 @@ export default function App() {
         
 
         {/* 요약 카드 */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-          <SummaryCard label="총 종목 수" value={stocks.length + "개"} color="text-slate-700" />
-          <SummaryCard label="총 원금" value={formatKRW(totalCost)} color="text-slate-700" />
-          <SummaryCard label="총 평가금액" value={formatKRW(totalEval)} color="text-slate-700" />
-          <SummaryCard
-            label="총 손익"
-            value={formatKRW(totalPL)}
-            color={totalPL >= 0 ? "text-red-500" : "text-blue-500"}
-            sub={formatPercent(totalReturn)}
-            subColor={totalReturn >= 0 ? "text-red-400" : "text-blue-400"}
-          />
-          <SummaryCard
-            label="총 수익률"
-            value={formatPercent(totalReturn)}
-            color={totalReturn >= 0 ? "text-red-500" : "text-blue-500"}
-          />
+        <div className="bg-white rounded-2xl shadow p-4">
+          <div className="flex items-center gap-3 text-xs text-slate-400 mb-2">
+            <span>원금 <span className="text-slate-600 font-medium">{formatKRW(totalCost)}</span></span>
+            <span>·</span>
+            <span>종목 <span className="text-slate-600 font-medium">{stocks.length}개</span></span>
+          </div>
+          <div className="text-2xl md:text-3xl font-bold text-slate-800 tabular-nums">{formatKRW(totalEval)}</div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className={`text-sm font-semibold tabular-nums ${totalPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
+              {totalPL >= 0 ? "+" : ""}{formatKRW(totalPL)}
+            </span>
+            <span className={`text-sm font-medium ${totalReturn >= 0 ? "text-red-500" : "text-blue-500"}`}>
+              ({formatPercent(totalReturn)})
+            </span>
+          </div>
         </div>
 
         {/* 종목 추가/수정 폼 */}
@@ -544,7 +545,7 @@ export default function App() {
               <div className="flex gap-3 mt-4">
                 <button
                   type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-xl transition"
+                  className="bg-slate-900 hover:bg-slate-700 text-white font-semibold px-6 py-2 rounded-xl transition"
                 >
                   {editingId !== null ? "수정 완료" : "추가"}
                 </button>
@@ -560,6 +561,35 @@ export default function App() {
           </div>
         )}
 
+        {/* 그룹 필터 버튼 */}
+        {groupOrder.length > 1 && (
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setSelectedGroup(null)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                selectedGroup === null
+                  ? "bg-slate-900 text-white shadow"
+                  : "bg-white text-slate-600 hover:bg-slate-100 shadow"
+              }`}
+            >
+              전체
+            </button>
+            {groupOrder.map((g) => (
+              <button
+                key={g}
+                onClick={() => setSelectedGroup(g)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                  selectedGroup === g
+                    ? "bg-slate-900 text-white shadow"
+                    : "bg-white text-slate-600 hover:bg-slate-100 shadow"
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* 종목 테이블 */}
         <div className="bg-white rounded-2xl shadow overflow-hidden">
           <div className="overflow-x-auto">
@@ -568,7 +598,10 @@ export default function App() {
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-3 md:px-4 py-3 font-semibold text-slate-600">종목</th>
                   <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">현재가</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">평가금액 / 손익 / 수익률</th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">
+                    <span className="hidden md:inline">평가금액 / 손익 / 수익률</span>
+                    <span className="md:hidden">평가 / 손익</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -585,7 +618,7 @@ export default function App() {
                     </td>
                   </tr>
                 ) : (
-                  groupOrder.map((group) => {
+                  (selectedGroup ? [selectedGroup] : groupOrder).map((group) => {
                     const rows = groupMap[group];
                     const gEval = rows.reduce((s, r) => s + r.evalAmount, 0);
                     const gCost = rows.reduce((s, r) => s + r.costAmount, 0);
@@ -594,15 +627,15 @@ export default function App() {
                     return (
                       <React.Fragment key={group}>
                         {/* 그룹 헤더 */}
-                        <tr className="bg-indigo-50 border-t border-indigo-100">
+                        <tr className="bg-slate-50 border-t border-slate-200">
                           <td colSpan={2} className="px-3 md:px-4 py-2">
-                            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{group}</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{group}</span>
                             <span className="ml-2 text-xs text-slate-500">{rows.length}종목</span>
                           </td>
                           <td className="px-3 md:px-4 py-2 text-right tabular-nums whitespace-nowrap">
                             <div className="text-xs font-semibold text-slate-700">{formatKRW(gEval)}</div>
                             <div className={`text-[11px] font-semibold ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                              {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원 {formatPercent(gRet)}
+                              {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원 ({formatPercent(gRet)})
                             </div>
                           </td>
                         </tr>
@@ -639,7 +672,7 @@ export default function App() {
                                       {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
                                     </div>
                                     <div className={`text-[11px] font-semibold ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                                      {formatPercent(s.returnRate)}
+                                      ({formatPercent(s.returnRate)})
                                     </div>
                                   </div>
                                 </td>
@@ -657,7 +690,7 @@ export default function App() {
                                           className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-100 transition"
                                         >수정</button>
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
+                                          onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: s.id, name: s.name }); }}
                                           className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-100 transition"
                                         >삭제</button>
                                       </div>
@@ -694,6 +727,29 @@ export default function App() {
             </table>
           </div>
         </div>
+
+        {/* 삭제 확인 모달 */}
+        {confirmDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setConfirmDelete(null)}>
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-semibold text-slate-800 mb-1">종목 삭제</h3>
+              <p className="text-sm text-slate-500 mb-5">
+                <span className="font-medium text-slate-700">{confirmDelete.name}</span>을(를) 삭제하시겠습니까?<br />
+                삭제 후 복구할 수 없습니다.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                >취소</button>
+                <button
+                  onClick={() => { handleDelete(confirmDelete.id); setConfirmDelete(null); }}
+                  className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition"
+                >삭제</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 포트폴리오 비중 차트 */}
         {enriched.length > 0 && (
