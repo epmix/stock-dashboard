@@ -91,7 +91,8 @@ export default function App() {
       let successCount = 0;
       const updated = await Promise.all(
         targetStocks.map(async (s) => {
-          const isKRX = s.market === "KOSPI" || s.market === "KOSDAQ";
+          // 6자리 숫자 티커는 시장 설정 무관하게 Naver로 조회
+          const isKRX = s.market === "KOSPI" || s.market === "KOSDAQ" || /^\d{6}$/.test(s.ticker);
           if (isKRX) {
             const res = await fetch(`/api/naver?type=stock&ticker=${encodeURIComponent(s.ticker)}`);
             const d = await res.json();
