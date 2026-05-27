@@ -181,7 +181,7 @@ export default function App() {
   function validate(f) {
     const e = {};
     if (!f.name.trim()) e.name = "종목명을 입력하세요";
-    if (!f.ticker.trim()) e.ticker = "종목명에서 목록을 선택해주세요";
+    if (!f.ticker.trim()) e.ticker = "티커를 입력하세요";
     if (!f.quantity || isNaN(f.quantity) || Number(f.quantity) <= 0) e.quantity = "유효한 수량을 입력하세요";
     if (!f.avgPrice || isNaN(f.avgPrice) || Number(f.avgPrice) <= 0) e.avgPrice = "유효한 평균단가를 입력하세요";
     // 현재가는 선택 — 미입력 시 Yahoo Finance에서 자동 조회
@@ -455,14 +455,26 @@ export default function App() {
                         ))}
                       </ul>
                     )}
-                  {form.ticker && (
-                    <p className="mt-1.5 flex items-center gap-1.5">
-                      <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">{form.ticker}</span>
-                      <span className="text-xs text-slate-400">{form.market}</span>
-                    </p>
-                  )}
-                  {errors.ticker && <p className="text-xs text-red-500 mt-1">{errors.ticker}</p>}
                   </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={form.ticker}
+                      onChange={(e) => handleChange("ticker", e.target.value)}
+                      placeholder="티커 (자동입력)"
+                      className={`flex-1 border rounded-lg px-2.5 py-1.5 text-xs outline-none transition focus:ring-2 ${errors.ticker ? "border-red-400 focus:ring-red-200" : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100"} text-slate-600`}
+                    />
+                    <select
+                      value={form.market}
+                      onChange={(e) => handleChange("market", e.target.value)}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-600 outline-none focus:ring-2 focus:border-indigo-400 focus:ring-indigo-100"
+                    >
+                      <option value="KOSPI">KOSPI</option>
+                      <option value="KOSDAQ">KOSDAQ</option>
+                      <option value="US">미국</option>
+                    </select>
+                  </div>
+                  {errors.ticker && <p className="text-xs text-red-500 mt-1">{errors.ticker}</p>}
                 </FormField>
                 <FormField label="수량 (주)" error={errors.quantity}>
                   <input
