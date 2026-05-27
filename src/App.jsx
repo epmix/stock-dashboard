@@ -436,7 +436,7 @@ export default function App() {
                       type="text"
                       value={form.name}
                       onChange={(e) => handleChange("name", e.target.value)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 300)}
                       placeholder="삼성전자"
                       className={inputClass(errors.name)}
                       autoComplete="off"
@@ -446,7 +446,8 @@ export default function App() {
                         {suggestions.map((s) => (
                           <li
                             key={s.symbol}
-                            onMouseDown={() => handleSelectSuggestion(s)}
+                            onMouseDown={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
+                            onTouchEnd={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
                             className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-indigo-50 text-sm"
                           >
                             <span className="font-medium text-slate-800 truncate">{s.name}</span>
