@@ -4,7 +4,25 @@ const HEADERS = {
 };
 
 export default async function handler(req, res) {
-  const { type, ticker, code, symbol, count = "22" } = req.query;
+  const { type, ticker, code, symbol, count = "22", query } = req.query;
+
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  // 종목 검색 자동완성
+  if (type === "search") {
+    if (!query) return res.status(400).json({ error: "query required" });
+    try {
+      const r = await fetch(
+        `https://ac.stock.naver.com/ac?q=${encodeURIComponent(query)}&target=stock,overseas_stock`,
+        { headers: HEADERS }
+      );
+      const data = await r.json();
+      res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=60");
+      return res.status(200).json(data);
+    } catch (e) {
+      return res.status(502).json({ error: "search failed", detail: e.message });
+    }
+  }
 
   let url;
   if (type === "stock") {

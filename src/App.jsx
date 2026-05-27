@@ -280,25 +280,17 @@ export default function App() {
       clearTimeout(searchTimer.current);
       if (value.length < 1) { setSuggestions([]); return; }
       searchTimer.current = setTimeout(async () => {
-        if (!TWELVE_KEY) { setSuggestions([]); return; }
         try {
-          const res = await fetch(
-            `${TWELVE_BASE}/symbol_search?symbol=${encodeURIComponent(value)}&apikey=${TWELVE_KEY}`
-          );
+          const res = await fetch(`/api/naver?type=search&query=${encodeURIComponent(value)}`);
           const data = await res.json();
-          const items = (data?.data ?? []).filter(q => q.instrument_type === "Common Stock");
-          setSuggestions(items.slice(0, 6).map(q => {
-            const isKRX = q.exchange === "KRX" || q.mic_code === "XKRX";
-            return {
-              symbol: q.symbol,
-              name: q.instrument_name,
-              ticker: q.symbol,
-              market: isKRX ? "KOSPI" : "US",
-              exchange: q.exchange,
-            };
+          const items = (data?.items ?? []).slice(0, 7);
+          setSuggestions(items.map((q) => {
+            const tc = q.typeCode ?? "";
+            const market = tc === "KOSPI" ? "KOSPI" : tc === "KOSDAQ" ? "KOSDAQ" : "US";
+            return { symbol: q.code, name: q.name, ticker: q.code, market, exchange: q.typeName };
           }));
         } catch { setSuggestions([]); }
-      }, 300);
+      }, 250);
     }
   }
 
