@@ -592,12 +592,12 @@ export default function App() {
 
         {/* 종목 테이블 */}
         <div className="bg-white rounded-2xl shadow overflow-hidden">
-          <div className="overflow-x-auto">
+          <div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-3 md:px-4 py-3 font-semibold text-slate-600">종목</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">현재가</th>
+                  <th className="hidden md:table-cell text-right px-4 py-3 font-semibold text-slate-600">현재가</th>
                   <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">
                     <span className="hidden md:inline">평가금액 / 손익 / 수익률</span>
                     <span className="md:hidden">평가 / 손익</span>
@@ -628,14 +628,18 @@ export default function App() {
                       <React.Fragment key={group}>
                         {/* 그룹 헤더 */}
                         <tr className="bg-slate-50 border-t border-slate-200">
-                          <td colSpan={2} className="px-3 md:px-4 py-2">
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{group}</span>
-                            <span className="ml-2 text-xs text-slate-500">{rows.length}종목</span>
-                          </td>
-                          <td className="px-3 md:px-4 py-2 text-right tabular-nums whitespace-nowrap">
-                            <div className="text-xs font-semibold text-slate-700">{formatKRW(gEval)}</div>
-                            <div className={`text-[11px] font-semibold ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                              {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원 ({formatPercent(gRet)})
+                          <td colSpan={3} className="px-3 md:px-4 py-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{group}</span>
+                                <span className="ml-2 text-xs text-slate-400">{rows.length}종목</span>
+                              </div>
+                              <div className="text-right tabular-nums whitespace-nowrap">
+                                <div className="text-xs font-semibold text-slate-700">{formatKRW(gEval)}</div>
+                                <div className={`text-[11px] font-semibold ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                                  {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원 ({formatPercent(gRet)})
+                                </div>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -662,7 +666,7 @@ export default function App() {
                                     </svg>
                                   </div>
                                 </td>
-                                <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">
+                                <td className="hidden md:table-cell px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">
                                   {s.currentPrice.toLocaleString()}원
                                 </td>
                                 <td className="px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap">
@@ -683,6 +687,7 @@ export default function App() {
                                   <td colSpan={3} className="px-6 md:px-8 py-2.5">
                                     <div className="flex items-center gap-4 text-xs text-slate-600">
                                       <span><span className="text-slate-400">티커</span> {s.ticker}</span>
+                                      <span className="md:hidden"><span className="text-slate-400">현재가</span> {s.currentPrice.toLocaleString()}원</span>
                                       <span><span className="text-slate-400">평균단가</span> {s.avgPrice.toLocaleString()}원</span>
                                       <div className="ml-auto flex gap-1">
                                         <button
