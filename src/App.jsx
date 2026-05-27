@@ -181,7 +181,7 @@ export default function App() {
   function validate(f) {
     const e = {};
     if (!f.name.trim()) e.name = "종목명을 입력하세요";
-    if (!f.ticker.trim()) e.ticker = "티커를 입력하세요";
+    if (!f.ticker.trim()) e.ticker = "종목명에서 목록을 선택해주세요";
     if (!f.quantity || isNaN(f.quantity) || Number(f.quantity) <= 0) e.quantity = "유효한 수량을 입력하세요";
     if (!f.avgPrice || isNaN(f.avgPrice) || Number(f.avgPrice) <= 0) e.avgPrice = "유효한 평균단가를 입력하세요";
     // 현재가는 선택 — 미입력 시 Yahoo Finance에서 자동 조회
@@ -455,27 +455,14 @@ export default function App() {
                         ))}
                       </ul>
                     )}
+                  {form.ticker && (
+                    <p className="mt-1.5 flex items-center gap-1.5">
+                      <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">{form.ticker}</span>
+                      <span className="text-xs text-slate-400">{form.market}</span>
+                    </p>
+                  )}
+                  {errors.ticker && <p className="text-xs text-red-500 mt-1">{errors.ticker}</p>}
                   </div>
-                </FormField>
-                <FormField label="티커" error={errors.ticker}>
-                  <input
-                    type="text"
-                    value={form.ticker}
-                    onChange={(e) => handleChange("ticker", e.target.value)}
-                    placeholder="005930"
-                    className={inputClass(errors.ticker)}
-                  />
-                </FormField>
-                <FormField label="시장">
-                  <select
-                    value={form.market}
-                    onChange={(e) => handleChange("market", e.target.value)}
-                    className={inputClass(false)}
-                  >
-                    <option value="KOSPI">KOSPI</option>
-                    <option value="KOSDAQ">KOSDAQ</option>
-                    <option value="US">미국 (NYSE/NASDAQ)</option>
-                  </select>
                 </FormField>
                 <FormField label="수량 (주)" error={errors.quantity}>
                   <input
@@ -495,16 +482,6 @@ export default function App() {
                     placeholder="65000"
                     min="1"
                     className={inputClass(errors.avgPrice)}
-                  />
-                </FormField>
-                <FormField label="현재가 (원)" error={errors.currentPrice}>
-                  <input
-                    type="number"
-                    value={form.currentPrice}
-                    onChange={(e) => handleChange("currentPrice", e.target.value)}
-                    placeholder="72000"
-                    min="1"
-                    className={inputClass(errors.currentPrice)}
                   />
                 </FormField>
                 <FormField label="그룹">
