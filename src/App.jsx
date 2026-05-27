@@ -40,6 +40,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [errors, setErrors] = useState({});
   const [isFetching, setIsFetching] = useState(false);
@@ -95,9 +96,18 @@ export default function App() {
           const isKRX = s.market === "KOSPI" || s.market === "KOSDAQ" || /^\d{6}$/.test(s.ticker);
           try {
             if (isKRX) {
-              const res = await fetch(`/api/naver?type=stock&ticker=${encodeURIComponent(s.ticker)}`);
-              const d = await res.json();
-              const price = parseInt((d.closePrice ?? "").replace(/,/g, ""), 10);
+              // KIS API (실시간) → Naver 순으로 시도
+              let price = 0;
+              try {
+                const kisRes = await fetch(`/api/kis?ticker=${encodeURIComponent(s.ticker)}`);
+                const kisD = await kisRes.json();
+                if (kisD.price > 0) price = kisD.price;
+              } catch {}
+              if (!price) {
+                const navRes = await fetch(`/api/naver?type=stock&ticker=${encodeURIComponent(s.ticker)}`);
+                const navD = await navRes.json();
+                price = parseInt((navD.closePrice ?? "").replace(/,/g, ""), 10);
+              }
               if (price > 0) { successCount++; return { ...s, currentPrice: price }; }
             } else {
               if (TWELVE_KEY) {
@@ -114,7 +124,17 @@ export default function App() {
       );
       setStocks(updated);
       setLastUpdated(new Date());
-      if (successCount === 0) setFetchError("시세 조회 실패 — 티커를 확인하세요");
+      if (successCount === 0) {
+        setFetchError("시세 조회 실패 — 티커를 확인하세요");
+      } else if (isSupabaseConfigured && supabase) {
+        const changed = updated.filter((s) => {
+          const orig = targetStocks.find((t) => t.id === s.id);
+          return orig && s.currentPrice !== orig.currentPrice && s.currentPrice > 0;
+        });
+        changed.forEach((s) =>
+          supabase.from("stocks").update({ current_price: s.currentPrice }).eq("id", s.id)
+        );
+      }
     } catch {
       setFetchError("시세 조회에 실패했습니다.");
     } finally {
@@ -374,7 +394,7 @@ export default function App() {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl md:text-3xl font-bold text-slate-800">포트폴리오 대시보드</h1>
+              <h1 className="text-xl md:text-3xl font-bold text-slate-800">자산관리</h1>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${isSupabaseConfigured ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                 {isSupabaseConfigured ? "● Supabase 연결됨" : "● 로컬 모드"}
               </span>
@@ -547,25 +567,20 @@ export default function App() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-3 md:px-4 py-3 font-semibold text-slate-600">종목</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">수량</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">평균단가</th>
                   <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">현재가</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">평가금액</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">손익</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">수익률</th>
-                  <th className="px-3 md:px-4 py-3"></th>
+                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">평가금액 / 손익 / 수익률</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-slate-400">
+                    <td colSpan={3} className="text-center py-12 text-slate-400">
                       데이터 불러오는 중...
                     </td>
                   </tr>
                 ) : enriched.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-slate-400">
+                    <td colSpan={3} className="text-center py-12 text-slate-400">
                       종목을 추가해보세요
                     </td>
                   </tr>
@@ -580,49 +595,79 @@ export default function App() {
                       <React.Fragment key={group}>
                         {/* 그룹 헤더 */}
                         <tr className="bg-indigo-50 border-t border-indigo-100">
-                          <td colSpan={4} className="px-3 md:px-4 py-2">
+                          <td colSpan={2} className="px-3 md:px-4 py-2">
                             <span className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{group}</span>
                             <span className="ml-2 text-xs text-slate-500">{rows.length}종목</span>
                           </td>
-                          <td className="px-3 md:px-4 py-2 text-right text-xs font-semibold text-slate-700 tabular-nums whitespace-nowrap">{formatKRW(gEval)}</td>
-                          <td className={`px-3 md:px-4 py-2 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                            {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원
+                          <td className="px-3 md:px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                            <div className="text-xs font-semibold text-slate-700">{formatKRW(gEval)}</div>
+                            <div className={`text-[11px] font-semibold ${gPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                              {gPL >= 0 ? "+" : ""}{gPL.toLocaleString()}원 {formatPercent(gRet)}
+                            </div>
                           </td>
-                          <td className={`px-3 md:px-4 py-2 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${gRet >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                            {formatPercent(gRet)}
-                          </td>
-                          <td />
                         </tr>
                         {/* 종목 행 */}
-                        {rows.map((s) => (
-                          <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                            <td className="px-3 md:px-4 py-3 pl-6 md:pl-8">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                                <div>
-                                  <div className="font-semibold text-slate-800 whitespace-nowrap">{s.name}</div>
-                                  <div className="text-xs text-slate-400">{s.ticker}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.quantity.toLocaleString()}</td>
-                            <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.avgPrice.toLocaleString()}원</td>
-                            <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">{s.currentPrice.toLocaleString()}원</td>
-                            <td className="px-3 md:px-4 py-3 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">{formatKRW(s.evalAmount)}</td>
-                            <td className={`px-3 md:px-4 py-3 text-right font-medium tabular-nums whitespace-nowrap ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                              {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
-                            </td>
-                            <td className={`px-3 md:px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                              {formatPercent(s.returnRate)}
-                            </td>
-                            <td className="px-3 md:px-4 py-3">
-                              <div className="flex items-center gap-1 justify-end">
-                                <button onClick={() => handleEdit(s)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition">수정</button>
-                                <button onClick={() => handleDelete(s.id)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition">삭제</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {rows.map((s) => {
+                          const isExpanded = expandedId === s.id;
+                          return (
+                            <React.Fragment key={s.id}>
+                              <tr
+                                className="border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer select-none"
+                                onClick={() => setExpandedId(isExpanded ? null : s.id)}
+                              >
+                                <td className="px-3 md:px-4 py-3 pl-6 md:pl-8">
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                                    <div>
+                                      <div className="font-semibold text-slate-800 whitespace-nowrap">{s.name}</div>
+                                      <div className="text-xs text-slate-400">
+                                        {s.quantity.toLocaleString()}주
+                                        </div>
+                                    </div>
+                                    <svg className={`ml-1 w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+                                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                                    </svg>
+                                  </div>
+                                </td>
+                                <td className="px-3 md:px-4 py-3 text-right text-slate-700 tabular-nums whitespace-nowrap">
+                                  {s.currentPrice.toLocaleString()}원
+                                </td>
+                                <td className="px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                                  <div className="font-medium text-slate-800">{formatKRW(s.evalAmount)}</div>
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <div className={`text-[11px] font-medium ${s.profitLoss >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                                      {s.profitLoss >= 0 ? "+" : ""}{s.profitLoss.toLocaleString()}원
+                                    </div>
+                                    <div className={`text-[11px] font-semibold ${s.returnRate >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                                      {formatPercent(s.returnRate)}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                              {/* 상세 펼침 행 */}
+                              {isExpanded && (
+                                <tr className="bg-slate-50 border-b border-slate-100">
+                                  <td colSpan={3} className="px-6 md:px-8 py-2.5">
+                                    <div className="flex items-center gap-4 text-xs text-slate-600">
+                                      <span><span className="text-slate-400">티커</span> {s.ticker}</span>
+                                      <span><span className="text-slate-400">평균단가</span> {s.avgPrice.toLocaleString()}원</span>
+                                      <div className="ml-auto flex gap-1">
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handleEdit(s); }}
+                                          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-100 transition"
+                                        >수정</button>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
+                                          className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-100 transition"
+                                        >삭제</button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </React.Fragment>
                     );
                   })
@@ -631,15 +676,18 @@ export default function App() {
               {enriched.length > 0 && (
                 <tfoot>
                   <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
-                    <td className="px-3 md:px-4 py-3 text-slate-700" colSpan={4}>합계</td>
-                    <td className="px-3 md:px-4 py-3 text-right text-slate-800 tabular-nums whitespace-nowrap">{formatKRW(totalEval)}</td>
-                    <td className={`px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap ${totalPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                      {totalPL >= 0 ? "+" : ""}{totalPL.toLocaleString()}원
+                    <td className="px-3 md:px-4 py-3 text-slate-700" colSpan={2}>합계</td>
+                    <td className="px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                      <div className="text-slate-800">{formatKRW(totalEval)}</div>
+                      <div className="flex items-center gap-1 justify-end">
+                        <div className={`text-[11px] font-medium ${totalPL >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                          {totalPL >= 0 ? "+" : ""}{totalPL.toLocaleString()}원
+                        </div>
+                        <div className={`text-[11px] font-semibold ${totalReturn >= 0 ? "text-red-500" : "text-blue-500"}`}>
+                          {formatPercent(totalReturn)}
+                        </div>
+                      </div>
                     </td>
-                    <td className={`px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap ${totalReturn >= 0 ? "text-red-500" : "text-blue-500"}`}>
-                      {formatPercent(totalReturn)}
-                    </td>
-                    <td />
                   </tr>
                 </tfoot>
               )}
