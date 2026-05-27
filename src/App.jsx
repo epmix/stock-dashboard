@@ -328,7 +328,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-3 md:p-8">
+    <div className="min-h-screen bg-slate-100 p-3 md:p-8 tracking-tight">
       <div className="max-w-6xl mx-auto flex gap-6 items-start">
 
         {/* 사이드바: 시장 지수 */}
