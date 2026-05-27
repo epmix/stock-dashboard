@@ -52,6 +52,7 @@ export default function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [usdToKrw, setUsdToKrw] = useState(1400);
   const searchTimer = useRef(null);
 
   const enriched = stocks.map((s) => {
@@ -67,7 +68,7 @@ export default function App() {
   const totalPL = totalEval - totalCost;
   const totalReturn = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
 
-  async function loadStocks() {
+  async function loadStocks(rate) {
     if (!isSupabaseConfigured) { setIsLoading(false); return; }
     setIsLoading(true);
     const { data, error } = await supabase
@@ -83,10 +84,22 @@ export default function App() {
     const mapped = data.map(rowToStock);
     setStocks(mapped);
     setIsLoading(false);
-    if (mapped.length > 0) fetchCurrentPrices(mapped);
+    if (mapped.length > 0) fetchCurrentPrices(mapped, rate);
   }
 
-  async function fetchCurrentPrices(targetStocks) {
+  async function fetchUsdToKrw() {
+    try {
+      const res = await fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json");
+      const d = await res.json();
+      if (d?.usd?.krw) {
+        setUsdToKrw(d.usd.krw);
+        return d.usd.krw;
+      }
+    } catch {}
+    return null;
+  }
+
+  async function fetchCurrentPrices(targetStocks, rate) {
     if (!targetStocks || targetStocks.length === 0) return;
     setIsFetching(true);
     setFetchError(null);
@@ -115,7 +128,12 @@ export default function App() {
               if (TWELVE_KEY) {
                 const res = await fetch(`${TWELVE_BASE}/quote?symbol=${encodeURIComponent(s.ticker)}&apikey=${TWELVE_KEY}`);
                 const d = await res.json();
-                if (d.close && !d.code) { successCount++; return { ...s, currentPrice: Math.round(parseFloat(d.close)) }; }
+                if (d.close && !d.code) {
+                  const usd = parseFloat(d.close);
+                  const krw = Math.round(usd * (rate ?? usdToKrw));
+                  successCount++;
+                  return { ...s, currentPrice: krw };
+                }
               }
             }
           } catch {
@@ -182,7 +200,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadStocks();
+    fetchUsdToKrw().then((rate) => loadStocks(rate));
     fetchIndices();
   }, []);
 
@@ -209,7 +227,7 @@ export default function App() {
     const e = {};
     if (!f.name.trim()) e.name = "종목명을 입력하세요";
     if (!f.ticker.trim()) e.ticker = "티커를 입력하세요";
-    if (!f.quantity || isNaN(f.quantity) || Number(f.quantity) <= 0) e.quantity = "유효한 수량을 입력하세요";
+    if (!f.quantity || isNaN(f.quantity) || Number(f.quantity) <= 0 || Number(f.quantity) < 0.000001) e.quantity = "유효한 수량을 입력하세요";
     if (!f.avgPrice || isNaN(f.avgPrice) || Number(f.avgPrice) <= 0) e.avgPrice = "유효한 평균단가를 입력하세요";
     // 현재가는 선택 — 미입력 시 Yahoo Finance에서 자동 조회
     return e;
@@ -410,7 +428,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => { fetchCurrentPrices([...stocks]); fetchIndices(); }}
+              onClick={() => { fetchUsdToKrw().then((rate) => fetchCurrentPrices([...stocks], rate)); fetchIndices(); }}
               disabled={isFetching}
               className="flex items-center gap-1 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 font-semibold px-3 py-2 rounded-xl shadow transition"
             >
@@ -451,7 +469,7 @@ export default function App() {
         {/* 종목 추가/수정 모달 */}
         {showForm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={handleCancel}>
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl p-6" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-base font-semibold text-slate-800">
                   {editingId !== null ? "종목 수정" : "종목 추가"}
@@ -513,7 +531,8 @@ export default function App() {
                       value={form.quantity}
                       onChange={(e) => handleChange("quantity", e.target.value)}
                       placeholder="100"
-                      min="1"
+                      min="0.000001"
+                      step="any"
                       className={inputClass(errors.quantity)}
                     />
                   </FormField>
@@ -718,7 +737,7 @@ export default function App() {
               </tbody>
               {enriched.length > 0 && (
                 <tfoot>
-                  <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                  {/* <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold">
                     <td className="px-3 md:px-4 py-3 text-slate-700" colSpan={2}>합계</td>
                     <td className="px-3 md:px-4 py-3 text-right tabular-nums whitespace-nowrap">
                       <div className="text-slate-800">{formatKRW(totalEval)}</div>
@@ -731,7 +750,7 @@ export default function App() {
                         </div>
                       </div>
                     </td>
-                  </tr>
+                  </tr> */}
                 </tfoot>
               )}
             </table>
