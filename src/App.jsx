@@ -596,9 +596,9 @@ export default function App() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-3 md:px-4 py-3 font-semibold text-slate-600">종목</th>
-                  <th className="hidden md:table-cell text-right px-4 py-3 font-semibold text-slate-600">현재가</th>
-                  <th className="text-right px-3 md:px-4 py-3 font-semibold text-slate-600">
+                  <th className="text-left text-xs px-3 md:px-4 py-3 font-semibold text-slate-400">종목</th>
+                  <th className="hidden text-xs md:table-cell text-right px-4 py-3 font-semibold text-slate-400">현재가</th>
+                  <th className="text-right text-xs px-3 md:px-4 py-3 font-semibold text-slate-400">
                     <span className="hidden md:inline">평가금액 / 손익 / 수익률</span>
                     <span className="md:hidden">평가 / 손익</span>
                   </th>
@@ -652,9 +652,9 @@ export default function App() {
                                 className="border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer select-none"
                                 onClick={() => setExpandedId(isExpanded ? null : s.id)}
                               >
-                                <td className="px-3 md:px-4 py-3 pl-6 md:pl-8">
+                                <td className="px-4" >
                                   <div className="flex items-center gap-2">
-                                    <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                                    {/* <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} /> */}
                                     <div>
                                       <div className="font-semibold text-slate-800 md:whitespace-nowrap leading-snug">{s.name}</div>
                                       <div className="text-xs text-slate-400">
