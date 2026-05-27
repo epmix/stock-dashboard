@@ -448,116 +448,121 @@ export default function App() {
           </div>
         </div>
 
-        {/* 종목 추가/수정 폼 */}
+        {/* 종목 추가/수정 모달 */}
         {showForm && (
-          <div className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-base font-semibold text-slate-700 mb-4">
-              {editingId !== null ? "종목 수정" : "종목 추가"}
-            </h2>
-            <form onSubmit={handleSubmit} noValidate>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <FormField label="종목명" error={errors.name}>
-                  <div className="relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={handleCancel}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-base font-semibold text-slate-800">
+                  {editingId !== null ? "종목 수정" : "종목 추가"}
+                </h2>
+                <button onClick={handleCancel} className="text-slate-400 hover:text-slate-600 transition text-xl leading-none">×</button>
+              </div>
+              <form onSubmit={handleSubmit} noValidate>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField label="종목명" error={errors.name}>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={(e) => handleChange("name", e.target.value)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 300)}
+                        placeholder="삼성전자"
+                        className={inputClass(errors.name)}
+                        autoComplete="off"
+                      />
+                      {showSuggestions && suggestions.length > 0 && (
+                        <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                          {suggestions.map((s) => (
+                            <li
+                              key={s.symbol}
+                              onMouseDown={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
+                              onTouchEnd={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
+                              className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 text-sm"
+                            >
+                              <span className="font-medium text-slate-800 truncate">{s.name}</span>
+                              <span className="ml-2 text-xs text-slate-400 shrink-0">{s.ticker} · {s.market}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={form.ticker}
+                        onChange={(e) => handleChange("ticker", e.target.value)}
+                        placeholder="티커 (자동입력)"
+                        className={`flex-1 border rounded-lg px-2.5 py-1.5 text-xs outline-none transition focus:ring-2 ${errors.ticker ? "border-red-400 focus:ring-red-200" : "border-slate-200 focus:border-slate-400 focus:ring-slate-100"} text-slate-600`}
+                      />
+                      <select
+                        value={form.market}
+                        onChange={(e) => handleChange("market", e.target.value)}
+                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-600 outline-none focus:ring-2 focus:border-slate-400 focus:ring-slate-100"
+                      >
+                        <option value="KOSPI">KOSPI</option>
+                        <option value="KOSDAQ">KOSDAQ</option>
+                        <option value="US">미국</option>
+                      </select>
+                    </div>
+                    {errors.ticker && <p className="text-xs text-red-500 mt-1">{errors.ticker}</p>}
+                  </FormField>
+                  <FormField label="수량 (주)" error={errors.quantity}>
+                    <input
+                      type="number"
+                      value={form.quantity}
+                      onChange={(e) => handleChange("quantity", e.target.value)}
+                      placeholder="100"
+                      min="1"
+                      className={inputClass(errors.quantity)}
+                    />
+                  </FormField>
+                  <FormField label="평균단가 (원)" error={errors.avgPrice}>
+                    <input
+                      type="number"
+                      value={form.avgPrice}
+                      onChange={(e) => handleChange("avgPrice", e.target.value)}
+                      placeholder="65000"
+                      min="1"
+                      className={inputClass(errors.avgPrice)}
+                    />
+                  </FormField>
+                  <FormField label="그룹">
                     <input
                       type="text"
-                      value={form.name}
-                      onChange={(e) => handleChange("name", e.target.value)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 300)}
-                      placeholder="삼성전자"
-                      className={inputClass(errors.name)}
-                      autoComplete="off"
+                      list="group-list"
+                      value={form.groupName}
+                      onChange={(e) => handleChange("groupName", e.target.value)}
+                      placeholder="예: 성장주, 배당주, ETF"
+                      className={inputClass(false)}
                     />
-                    {showSuggestions && suggestions.length > 0 && (
-                      <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
-                        {suggestions.map((s) => (
-                          <li
-                            key={s.symbol}
-                            onMouseDown={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
-                            onTouchEnd={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
-                            className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-indigo-50 text-sm"
-                          >
-                            <span className="font-medium text-slate-800 truncate">{s.name}</span>
-                            <span className="ml-2 text-xs text-slate-400 shrink-0">{s.ticker} · {s.market}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={form.ticker}
-                      onChange={(e) => handleChange("ticker", e.target.value)}
-                      placeholder="티커 (자동입력)"
-                      className={`flex-1 border rounded-lg px-2.5 py-1.5 text-xs outline-none transition focus:ring-2 ${errors.ticker ? "border-red-400 focus:ring-red-200" : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100"} text-slate-600`}
-                    />
-                    <select
-                      value={form.market}
-                      onChange={(e) => handleChange("market", e.target.value)}
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-600 outline-none focus:ring-2 focus:border-indigo-400 focus:ring-indigo-100"
-                    >
-                      <option value="KOSPI">KOSPI</option>
-                      <option value="KOSDAQ">KOSDAQ</option>
-                      <option value="US">미국</option>
-                    </select>
-                  </div>
-                  {errors.ticker && <p className="text-xs text-red-500 mt-1">{errors.ticker}</p>}
-                </FormField>
-                <FormField label="수량 (주)" error={errors.quantity}>
-                  <input
-                    type="number"
-                    value={form.quantity}
-                    onChange={(e) => handleChange("quantity", e.target.value)}
-                    placeholder="100"
-                    min="1"
-                    className={inputClass(errors.quantity)}
-                  />
-                </FormField>
-                <FormField label="평균단가 (원)" error={errors.avgPrice}>
-                  <input
-                    type="number"
-                    value={form.avgPrice}
-                    onChange={(e) => handleChange("avgPrice", e.target.value)}
-                    placeholder="65000"
-                    min="1"
-                    className={inputClass(errors.avgPrice)}
-                  />
-                </FormField>
-                <FormField label="그룹">
-                  <input
-                    type="text"
-                    list="group-list"
-                    value={form.groupName}
-                    onChange={(e) => handleChange("groupName", e.target.value)}
-                    placeholder="예: 성장주, 배당주, ETF"
-                    className={inputClass(false)}
-                  />
-                  <datalist id="group-list">
-                    {[...new Set(stocks.map((s) => s.groupName).filter(Boolean))].map((g) => (
-                      <option key={g} value={g} />
-                    ))}
-                  </datalist>
-                </FormField>
-              </div>
-              {submitError && (
-                <p className="mt-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{submitError}</p>
-              )}
-              <div className="flex gap-3 mt-4">
-                <button
-                  type="submit"
-                  className="bg-slate-900 hover:bg-slate-700 text-white font-semibold px-6 py-2 rounded-xl transition"
-                >
-                  {editingId !== null ? "수정 완료" : "추가"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-6 py-2 rounded-xl transition"
-                >
-                  취소
-                </button>
-              </div>
-            </form>
+                    <datalist id="group-list">
+                      {[...new Set(stocks.map((s) => s.groupName).filter(Boolean))].map((g) => (
+                        <option key={g} value={g} />
+                      ))}
+                    </datalist>
+                  </FormField>
+                </div>
+                {submitError && (
+                  <p className="mt-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{submitError}</p>
+                )}
+                <div className="flex gap-3 mt-5">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-slate-900 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-xl transition"
+                  >
+                    {editingId !== null ? "수정 완료" : "추가"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl transition"
+                  >
+                    취소
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 

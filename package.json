@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "vercel dev",
+    "dev:all": "concurrently \"vite\" \"vercel dev --port 3001\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
+   
+
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
@@ -21,6 +24,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.5.0",
+    "concurrently": "^9.2.1",
     "eslint": "^9.13.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
